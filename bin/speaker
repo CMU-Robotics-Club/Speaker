@@ -1,0 +1,131 @@
+#!/usr/bin/env python
+
+from rc.clients import APIClient
+
+import argparse
+import logging
+import time
+import sys
+import subprocess
+import re
+import os
+import multiprocessing
+import signal
+
+from daemonize import Daemonize
+import psutil
+import pafy
+
+logger = None
+
+def _work(value):
+    tokens = value.split()
+    arguments = ['-a', '-l', '-p', '-s', '-v']
+    args = []
+
+    for argument in arguments:
+        if argument in tokens:
+            i = tokens.index(argument) + 1
+ 
+            v = tokens[i]
+ 
+            tokens.remove(argument)
+            tokens.remove(v)
+
+            args.append(argument)
+            args.append(v)
+
+    for token in tokens:
+        try:
+            video = pafy.new(token)
+        except:
+            continue
+
+        bestaudio = video.getbestaudio()
+        url = bestaudio.url
+        tokens.remove(token)
+        subprocess.call(["cvlc", token])
+ 
+
+    s = " ".join(tokens)
+    args = ['espeak'] + args + [s]
+    subprocess.call(args)
+
+
+def main():
+  client = APIClient()
+
+  # Get ID of speak channel
+  channel_id = client.channels(name='speak')[0]['id']
+
+  logger.info("Speak channel ID {}".format(channel_id))
+
+  logger.info("starting main loop")
+
+  message = client.channel(channel_id)
+
+  while True:
+    logger.debug("beginning of loop iteration")
+
+    try:
+        new_message = client.channel(channel_id)
+    except Exception as e:
+        pass
+
+    if message['value'] != new_message['value'] or message['updated'] != new_message['updated']:
+        value = new_message['value']
+
+        # If new message kill existing children
+        # from previous action
+        p = psutil.Process(os.getpid())
+        child_pids = p.get_children(recursive=True)
+
+        for child_pid in child_pids:
+            child_pid.send_signal(signal.SIGKILL)
+
+        process = multiprocessing.Process(target=_work, args=(value,))
+        process.start()
+
+        message = new_message
+
+    time.sleep(3)
+
+
+if __name__ == '__main__':
+    pid = "/tmp/speakertron.pid"
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('action', choices=["start", "stop"], help="Action for the daemon to take")
+    parser.add_argument('-l', '--logfile', help="Log to the specified file")
+
+    args = parser.parse_args()
+
+    action = args.action
+    logfile = args.logfile
+
+    logger = logging.getLogger()
+
+    keep_fds = []
+
+    if logfile:
+        logger.setLevel(logging.DEBUG)
+
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        # 2 1MB log files
+        file_handler = logging.handlers.RotatingFileHandler(logfile, maxBytes=1024*1024, backupCount=2)
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        
+        keep_fds.append(file_handler.stream.fileno())
+
+
+    daemon = Daemonize(app="speakertron", pid=pid, action=main, logger=logger, keep_fds=keep_fds)
+
+    if action == "start":
+        daemon.start()
+    elif action == "stop":
+        os.system("kill -9 `cat {}`".format(pid))
+        daemon.exit()
+
