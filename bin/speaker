@@ -10,11 +10,12 @@ import os
 import multiprocessing
 import signal
 
+import platform
 from daemonize import Daemonize
 import psutil
 import pafy
 
-from rc.clients import APIClient
+from rc.clients import APIClient, ChannelWebSocketClient
 
 
 logger = None
@@ -68,7 +69,16 @@ def _work(value):
 
     # Uses the remaining tokens for espeak
     s = " ".join(tokens)
-    args = ['espeak'] + args + [s]
+
+    program = None
+
+    if platform.system() == 'Darwin':
+        program = 'say'
+    else:
+        program = 'espeak'
+
+    args = [program] + args + [s]
+
     subprocess.call(args)
 
 
@@ -82,46 +92,28 @@ def main():
     espeak or VLC processs started from previous values.
     """
 
-    client = APIClient()
+    def callback(value):
+        value = str(value)
 
-    # Get ID of speak channel
-    channel_id = client.channels(name='speak')[0]['id']
+        # If new message kill existing children
+        # from previous value(s)
+        p = psutil.Process(os.getpid())
+        child_pids = p.get_children(recursive=True)
 
-    logger.info("Speak channel ID {}".format(channel_id))
+        #for child_pid in child_pids:
+        #    child_pid.send_signal(signal.SIGKILL)
 
-    logger.info("starting main loop")
+        # Start new process
+        process = multiprocessing.Process(target=_work, args=(value,))
+        process.start()
 
-    # Initial channel query
-    message = client.channel(channel_id)
 
-    while True:
-        logger.debug("beginning of loop iteration")
+    api_client = APIClient()
+    channel_id = api_client.channels(name='speak')[0]['id'] 
 
-        # Ignore network errors and try again
-        try:
-            new_message = client.channel(channel_id)
-        except Exception as e:
-            pass
-
-        # Care about 'value' or 'updated' field 
-        if message['value'] != new_message['value'] or message['updated'] != new_message['updated']:
-            value = new_message['value']
-
-            # If new message kill existing children
-            # from previous value(s)
-            p = psutil.Process(os.getpid())
-            child_pids = p.get_children(recursive=True)
-
-            for child_pid in child_pids:
-                child_pid.send_signal(signal.SIGKILL)
-
-            # Start new process
-            process = multiprocessing.Process(target=_work, args=(value,))
-            process.start()
-
-            message = new_message
-
-        time.sleep(3)
+    client = ChannelWebSocketClient(channel_id, callback)
+    client.connect()
+    client.run_forever()
 
 
 if __name__ == '__main__':

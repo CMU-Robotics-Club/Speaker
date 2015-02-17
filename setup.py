@@ -20,7 +20,7 @@ setup(
     scripts = ["bin/speaker"],
     long_description=read('README.md'),
     dependency_links = [
-        'https://github.com/CMU-Robotics-Club/pyrc/tarball/master#egg=pyrc-1.0',
+        'https://github.com/CMU-Robotics-Club/pyrc/tarball/master#egg=pyrc-2.0',
     ],
     install_requires = [
         'daemonize',
