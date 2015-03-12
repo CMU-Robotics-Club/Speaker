@@ -98,10 +98,15 @@ def main():
         # If new message kill existing children
         # from previous value(s)
         p = psutil.Process(os.getpid())
-        child_pids = p.get_children(recursive=True)
+        children = p.get_children(recursive=True)
 
-        #for child_pid in child_pids:
-        #    child_pid.send_signal(signal.SIGKILL)
+        for child in children:
+            children2 = child.get_children(recursive=True)
+
+            for child2 in children2:
+                child2.send_signal(signal.SIGKILL)
+
+            child.send_signal(signal.SIGKILL)
 
         # Start new process
         process = multiprocessing.Process(target=_work, args=(value,))
