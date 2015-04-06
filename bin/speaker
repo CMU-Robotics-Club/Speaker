@@ -15,7 +15,7 @@ from daemonize import Daemonize
 import psutil
 import pafy
 
-from rc.clients import APIClient, ChannelWebSocketClient
+from rc.clients import APIClient, WebSocketClient
 
 
 logger = None
@@ -92,8 +92,8 @@ def main():
     espeak or VLC processs started from previous values.
     """
 
-    def callback(value):
-        value = str(value)
+    def callback(instance):
+        value = instance['value']
 
         # If new message kill existing children
         # from previous value(s)
@@ -116,7 +116,7 @@ def main():
     api_client = APIClient()
     channel_id = api_client.channels(name='speak')[0]['id'] 
 
-    client = ChannelWebSocketClient(channel_id, callback)
+    client = WebSocketClient('channels', channel_id, callback)
     client.connect()
     client.run_forever()
 
