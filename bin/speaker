@@ -116,9 +116,10 @@ def main():
     api_client = APIClient()
     channel_id = api_client.channels(name='speak')[0]['id'] 
 
-    client = WebSocketClient('channels', channel_id, callback)
-    client.connect()
-    client.run_forever()
+    while True:
+        client = WebSocketClient('channels', channel_id, callback)
+        client.connect()
+        client.run_forever()
 
 
 if __name__ == '__main__':
